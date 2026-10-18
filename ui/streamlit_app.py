@@ -1,4 +1,6 @@
 import json
+import uuid
+
 import requests
 import streamlit as st
 
@@ -43,9 +45,12 @@ def replay_case(case_id: int):
 def list_cases():
     resp = requests.get(f"{API_BASE}/cases", timeout=10)
     if resp.status_code == 404:
-        return []
+        return {"case_ids": []}
     resp.raise_for_status()
-    return resp.json()
+    payload = resp.json()
+    if not isinstance(payload, dict):
+        return {"case_ids": []}
+    return payload
 
 
 st.set_page_config(page_title="Samsara Atlas", page_icon="🧭", layout="wide")
@@ -87,22 +92,26 @@ with st.form("workflow_form"):
     submitted = st.form_submit_button("Run Workflow")
 
 if submitted:
+    key = idempotency_key.strip() or str(uuid.uuid4())
     with st.spinner("Running workflow..."):
         try:
             result = run_workflow(
                 employee_id=employee_id,
                 case_transcript=case_transcript,
                 tone=tone,
-                idempotency_key=idempotency_key or None,
+                idempotency_key=key,
             )
             st.success(f"Case completed: {result['case_id']}")
+            st.caption(f"Idempotency key: {key}")
             st.session_state["last_case_id"] = result["case_id"]
             st.session_state["case_result"] = result
         except requests.exceptions.RequestException as e:
             st.error(f"Error: {e}")
+            st.caption(f"Retry with the same idempotency key to avoid a second case note: {key}")
 
 if "case_result" in st.session_state:
     st.subheader("Drafted Response")
+    st.warning("Draft only. A person should review this before it is sent to the employee.")
     outputs = st.session_state["case_result"].get("outputs", {})
     st.write(f"**Subject:** {outputs.get('subject', '')}")
     st.write(outputs.get("body", ""))
@@ -126,17 +135,29 @@ with col_b:
     if st.button("Replay Case"):
         try:
             replay_result = replay_case(int(case_id_input))
-            st.info(f"Replay created case {replay_result['case_id']}")
+            parent = replay_result.get("replay_of_case_id")
+            st.info(f"Replay created case {replay_result['case_id']} from case {parent}")
         except requests.exceptions.RequestException as e:
             st.error(f"Error: {e}")
+
+def _table_rows(rows: list[dict]) -> list[dict]:
+    """Stringify nested cells so the case table can mix objects and lists."""
+    display = []
+    for row in rows:
+        display.append({
+            key: json.dumps(value) if isinstance(value, (dict, list)) else value
+            for key, value in row.items()
+        })
+    return display
+
 
 if "loaded_case" in st.session_state:
     data = st.session_state["loaded_case"]
     st.json(data["case"])
     st.write("**Steps**")
-    st.table(data["steps"])
+    st.table(_table_rows(data["steps"]))
     st.write("**Case Notes**")
-    st.table(data["case_notes"])
+    st.table(_table_rows(data["case_notes"]))
 
 st.divider()
 st.caption(f"All cases: {list_cases().get('case_ids', [])}")

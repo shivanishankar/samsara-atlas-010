@@ -13,6 +13,15 @@ os.environ["DOCS_DIR"] = os.path.join(os.path.dirname(os.path.dirname(__file__))
 
 
 @pytest.fixture
+def client(db_session):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app)
+
+
+@pytest.fixture
 def db_session():
     # Import models before init_db() so SQLAlchemy's declarative metadata
     # actually knows about every table before create_all() runs - otherwise

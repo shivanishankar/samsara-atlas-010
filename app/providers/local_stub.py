@@ -1,19 +1,13 @@
-"""Optional local stub - different response shape. Behind PROVIDER_TYPE=local flag."""
+"""Alternate local provider. Different raw shape, same .text contract."""
 
-import hashlib
-import random
-
-from app.providers.base import ModelProvider, CompletionResponse
+from app.providers.base import CompletionResponse, ModelProvider
+from app.providers.stub import build_stub_text
 
 
 class LocalStubProvider(ModelProvider):
-    """Alternative stub with a different raw shape - tests provider abstraction robustness."""
+    model_name = "local-stub"
 
     def complete(self, prompt: str, **kwargs) -> CompletionResponse:
-        if random.random() < 0.05:
-            raise TimeoutError("Local stub timeout")
-
-        key = hashlib.sha256((prompt + str(kwargs)).encode()).hexdigest()
-        text = f"[local stub {key[:12]}]"
+        text = build_stub_text(prompt, **kwargs)
         raw = {"output": {"text": text}, "status": "ok"}
         return CompletionResponse(text=text, raw=raw)

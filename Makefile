@@ -1,7 +1,9 @@
 .PHONY: setup seed api ui demo test load
 
+PYTHON := $(shell command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3)
+
 venv:
-	python3 -m venv .venv
+	$(PYTHON) -m venv .venv
 
 setup: venv
 	.venv/bin/pip install -r requirements.txt

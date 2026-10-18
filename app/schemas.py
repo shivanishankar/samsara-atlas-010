@@ -1,11 +1,11 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CaseInputs(BaseModel):
-    employee_id: str
-    case_transcript: str
+    employee_id: str = Field(min_length=1, max_length=64)
+    case_transcript: str = Field(min_length=1, max_length=8000)
     tone: Literal["empathetic", "direct", "formal"]
 
 
@@ -17,7 +17,6 @@ class StructuredResponse(BaseModel):
 
 
 class ExtractActionsOutput(BaseModel):
-    """Schema for summarize_and_extract_actions - NOT validated in engine (intentional flaw, see P013)."""
     summary: str
     action_items: list[str]
     next_steps: list[str]
