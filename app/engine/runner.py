@@ -139,11 +139,31 @@ def _claim_case(key: str | None, inputs: dict, input_hash: str, replay_of_case_i
     raise last_lock_error or OperationalError("database is locked", None, None)
 
 
+def _stored_input_hash(existing: Case) -> str | None:
+    """Hash the body persisted with this case.
+
+    Rows written before hashing have a null input_hash. The comparison has to
+    use those stored inputs. Assigning the arriving request's hash would make
+    a reused key look like a match.
+    """
+    raw = existing.inputs_json
+    if not raw:
+        return None
+    try:
+        stored = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(stored, dict):
+        return None
+    return _hash_inputs(stored)
+
+
 def _decide_existing(db, existing: Case, input_hash: str) -> tuple[int, str]:
-    if existing.input_hash and existing.input_hash != input_hash:
+    stored_hash = existing.input_hash or _stored_input_hash(existing)
+    if stored_hash != input_hash:
         raise IdempotencyConflict()
     if not existing.input_hash:
-        existing.input_hash = input_hash
+        existing.input_hash = stored_hash
         db.commit()
     if existing.status == "completed":
         return existing.id, "done"

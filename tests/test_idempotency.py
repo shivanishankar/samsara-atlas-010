@@ -67,6 +67,56 @@ def test_same_key_different_inputs_conflict(db_session):
         run_workflow(other, idempotency_key=key)
 
 
+def test_null_input_hash_same_body_is_a_hit_and_backfills(db_session):
+    key = "legacy-null-hash-same"
+    case = Case(
+        status="completed",
+        idempotency_key=key,
+        input_hash=None,
+        inputs_json=json.dumps(INPUTS),
+        outputs_json=json.dumps({"subject": "Stored", "body": "Original draft"}),
+        artifacts_json="{}",
+    )
+    db_session.add(case)
+    db_session.commit()
+    case_id = case.id
+
+    result = run_workflow(INPUTS, idempotency_key=key)
+
+    assert result["case_id"] == case_id
+    assert result["outputs"]["body"] == "Original draft"
+    db_session.rollback()
+    stored = db_session.query(Case).filter_by(id=case_id).one()
+    assert stored.input_hash
+
+
+def test_null_input_hash_different_body_conflicts_without_overwriting(db_session):
+    key = "legacy-null-hash-different"
+    case = Case(
+        status="completed",
+        idempotency_key=key,
+        input_hash=None,
+        inputs_json=json.dumps(INPUTS, sort_keys=True),
+        outputs_json=json.dumps({"subject": "Stored", "body": "Original draft"}),
+        artifacts_json="{}",
+    )
+    db_session.add(case)
+    db_session.commit()
+    case_id = case.id
+
+    other = dict(INPUTS)
+    other["employee_id"] = "E99999"
+    other["case_transcript"] = "A different employee asked about a different policy."
+    with pytest.raises(IdempotencyConflict):
+        run_workflow(other, idempotency_key=key)
+
+    db_session.rollback()
+    stored = db_session.query(Case).filter_by(id=case_id).one()
+    assert stored.input_hash is None
+    assert stored.status == "completed"
+    assert json.loads(stored.outputs_json)["body"] == "Original draft"
+
+
 def test_concurrent_requests_create_one_case_and_one_note(db_session):
     _seed(db_session)
     key = "concurrent-idempotency-key"
